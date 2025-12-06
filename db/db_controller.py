@@ -51,7 +51,9 @@ def init_db():
         user_id INTEGER NOT NULL,
         shop_id INTEGER NOT NULL,
         items TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        delivery_type TEXT,
+        comment TEXT
     );
     """)
 
@@ -74,8 +76,10 @@ def add_employee(tg_id: int, name: str, office: str, ecard: str) -> bool:
         return False
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("INSERT INTO employees (tg_id, name, office, ecard) VALUES (?, ?, ?, ?)",
-                (tg_id, name, office, ecard))
+    cur.execute(
+        "INSERT INTO employees (tg_id, name, office, ecard) VALUES (?, ?, ?, ?)",
+        (tg_id, name, office, ecard)
+    )
     conn.commit()
     conn.close()
     return True
@@ -130,15 +134,29 @@ def _parse_menu(raw: Optional[str]) -> List[Dict]:
     return []
 
 
-def add_shop(name: str, address: str, menu: List[Dict], time_available: str,
-             day_available: str, report_time: str, active: bool = True) -> int:
+def add_shop(
+    name: str,
+    address: str,
+    menu: List[Dict],
+    time_available: str,
+    day_available: str,
+    report_time: str,
+    active: bool = True
+) -> int:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO shops (name, address, menu, time_available, day_available, report_time, active) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (name, address, json.dumps(menu, ensure_ascii=False),
-         time_available, day_available, report_time, int(active))
+        (
+            name,
+            address,
+            json.dumps(menu, ensure_ascii=False),
+            time_available,
+            day_available,
+            report_time,
+            int(active)
+        )
     )
     shop_id = cur.lastrowid
     conn.commit()
@@ -177,6 +195,22 @@ def set_shop_active(shop_id: int, active: bool) -> bool:
     return updated > 0
 
 
+def delete_shop(shop_id: int) -> bool:
+    """
+    Полное удаление кафе:
+      - удаляем все заказы по этому кафе
+      - удаляем сам кафе из таблицы shops
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM orders WHERE shop_id = ?", (shop_id,))
+    cur.execute("DELETE FROM shops WHERE id = ?", (shop_id,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return deleted > 0
+
+
 def add_item_to_shop(shop_id: int, title: str, price: float) -> bool:
     conn = get_connection()
     cur = conn.cursor()
@@ -187,8 +221,10 @@ def add_item_to_shop(shop_id: int, title: str, price: float) -> bool:
         return False
     menu = _parse_menu(row[0])
     menu.append({"title": str(title), "price": float(price)})
-    cur.execute("UPDATE shops SET menu = ? WHERE id = ?",
-                (json.dumps(menu, ensure_ascii=False), shop_id))
+    cur.execute(
+        "UPDATE shops SET menu = ? WHERE id = ?",
+        (json.dumps(menu, ensure_ascii=False), shop_id)
+    )
     conn.commit()
     conn.close()
     return True
@@ -207,20 +243,38 @@ def remove_item_from_shop(shop_id: int, item_index: int) -> bool:
         conn.close()
         return False
     menu.pop(item_index)
-    cur.execute("UPDATE shops SET menu = ? WHERE id = ?",
-                (json.dumps(menu, ensure_ascii=False), shop_id))
+    cur.execute(
+        "UPDATE shops SET menu = ? WHERE id = ?",
+        (json.dumps(menu, ensure_ascii=False), shop_id)
+    )
     conn.commit()
     conn.close()
     return True
 
 
-# ========== ORDERS ==========
-def add_order(user_id: int, shop_id: int, items: List[Dict]) -> int:
+# Заказы
+def add_order(
+    user_id: int,
+    shop_id: int,
+    items: List[Dict],
+    delivery_type: Optional[str] = None,
+    comment: Optional[str] = None
+) -> int:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO orders (user_id, shop_id, items, created_at) VALUES (?, ?, ?, ?)",
-        (user_id, shop_id, json.dumps(items, ensure_ascii=False), datetime.now().isoformat())
+        """
+        INSERT INTO orders (user_id, shop_id, items, created_at, delivery_type, comment)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            shop_id,
+            json.dumps(items, ensure_ascii=False),
+            datetime.now().isoformat(),
+            delivery_type,
+            comment,
+        )
     )
     order_id = cur.lastrowid
     conn.commit()
@@ -232,7 +286,8 @@ def get_orders_by_shop(shop_id: int) -> List[tuple]:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, user_id, shop_id, items, created_at FROM orders WHERE shop_id = ?",
+        "SELECT id, user_id, shop_id, items, created_at, delivery_type, comment "
+        "FROM orders WHERE shop_id = ?",
         (shop_id,)
     )
     rows = cur.fetchall()
@@ -244,7 +299,8 @@ def get_orders_by_user(user_id: int) -> List[tuple]:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, user_id, shop_id, items, created_at FROM orders WHERE user_id = ?",
+        "SELECT id, user_id, shop_id, items, created_at, delivery_type, comment "
+        "FROM orders WHERE user_id = ?",
         (user_id,)
     )
     rows = cur.fetchall()

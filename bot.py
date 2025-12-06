@@ -40,20 +40,44 @@ async def send_report_for_shop(bot: Bot, shop_id: int):
     text = f"📦 Отчёт по кафе *{shop_name}*:\n\n"
     total_sum_all = 0
     for o in orders:
-        order_id, user_id, shop_id_row, items_raw, created_at = o
+        order_id, user_id, shop_id_row, items_raw, created_at, delivery_type, comment = o
         try:
             items = json.loads(items_raw)
-        except:
+        except Exception:
             items = []
+
         user = get_employee(user_id)
-        user_name = user[1] if user else str(user_id)
-        text += f"👤 {user_name} (id {user_id}) — заказ #{order_id} ({created_at}):\n"
+        if user:
+            # employees: (tg_id, name, office, ecard)
+            user_name = user[1]
+            office = user[2]
+            user_label = f"{user_name} (офис {office}, id {user_id})"
+        else:
+            user_label = f"id {user_id}"
+
+        text += f"👤 {user_label} — заказ #{order_id} ({created_at}):\n"
+
+        # Тип доставки
+        if delivery_type:
+            if delivery_type == "office":
+                delivery_txt = "доставка в офис"
+            elif delivery_type == "restaurant":
+                delivery_txt = "на подносе в ресторане"
+            else:
+                delivery_txt = delivery_type
+            text += f"  Подача: {delivery_txt}\n"
+
+        # Комментарий
+        if comment:
+            text += f"  Комментарий: {comment}\n"
+
         order_sum = 0
         for it in items:
             title = it.get("title")
             price = it.get("price", 0)
             order_sum += price
             text += f"  • {title} — {price}₽\n"
+
         text += f"  Итого: {order_sum}₽\n\n"
         total_sum_all += order_sum
 

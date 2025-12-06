@@ -10,7 +10,8 @@ from aiogram.fsm.state import StatesGroup, State
 from db.db_controller import (
     add_shop, get_shops, get_shop_by_id,
     add_employee, add_manager, is_manager,
-    add_item_to_shop, remove_item_from_shop, set_shop_active
+    add_item_to_shop, remove_item_from_shop, set_shop_active,
+    get_orders_by_shop, get_employee, delete_shop
 )
 
 import json
@@ -36,19 +37,22 @@ async def render_shop_management(message_obj, shop_id: int):
     if not shop:
         try:
             await message_obj.edit_text("Кафе не найдено.")
-        except:
+        except Exception:
             await message_obj.answer("Кафе не найдено.")
         return
 
     active = shop[7] == 1
     kb = [
         [InlineKeyboardButton(text="📋 Посмотреть меню", callback_data=f"adm_shop_viewmenu_{shop_id}")],
+        [InlineKeyboardButton(text="📦 Текущие заказы", callback_data=f"adm_shop_orders_{shop_id}")],
+        [InlineKeyboardButton(text="📊 Агрегированный отчёт", callback_data=f"adm_shop_agg_{shop_id}")],
         [InlineKeyboardButton(text="➕ Добавить позицию", callback_data=f"adm_shop_additem_{shop_id}")],
         [InlineKeyboardButton(text="🗑 Удалить позицию", callback_data=f"adm_shop_delchoose_{shop_id}")],
         [InlineKeyboardButton(
             text=("🚫 Сделать неактивным" if active else "✅ Сделать активным"),
             callback_data=f"adm_shop_toggleactive_{shop_id}"
         )],
+        [InlineKeyboardButton(text="🔥 Полностью удалить кафе", callback_data=f"adm_shop_delete_{shop_id}")],
         [InlineKeyboardButton(text="⬅ Назад (список)", callback_data="adm_list_shops")]
     ]
     text = (
@@ -59,7 +63,7 @@ async def render_shop_management(message_obj, shop_id: int):
     )
     try:
         await message_obj.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-    except:
+    except Exception:
         await message_obj.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
@@ -201,7 +205,7 @@ async def adm_shop_viewmenu(callback: CallbackQuery):
     shop = get_shop_by_id(shop_id)
     try:
         menu = json.loads(shop[3]) if shop and shop[3] else []
-    except:
+    except Exception:
         menu = []
     if not menu:
         await callback.message.edit_text("Меню пустое.")
@@ -211,6 +215,170 @@ async def adm_shop_viewmenu(callback: CallbackQuery):
         text += f"{i}. {item.get('title')} — {item.get('price')}₽\n"
     kb = [[InlineKeyboardButton(text="⬅ Назад", callback_data=f"adm_shop_{shop_id}")]]
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.regexp(r"^adm_shop_orders_\d+$"))
+async def adm_shop_orders(callback: CallbackQuery):
+    if not is_manager(callback.from_user.id):
+        await callback.answer("Нет прав", show_alert=True)
+        return
+
+    shop_id = int(callback.data.replace("adm_shop_orders_", ""))
+    shop = get_shop_by_id(shop_id)
+    if not shop:
+        await callback.message.edit_text("Кафе не найдено.")
+        return
+
+    orders = get_orders_by_shop(shop_id)
+    if not orders:
+        await callback.message.edit_text(
+            f"По кафе {shop[1]} пока нет заказов.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="⬅ Назад", callback_data=f"adm_shop_{shop_id}")]
+                ]
+            )
+        )
+        return
+
+    text = f"📦 Заказы по кафе {shop[1]}:\n\n"
+
+    for o in orders:
+        order_id, user_id, shop_id_row, items_raw, created_at, delivery_type, comment = o
+        emp = get_employee(user_id)
+        if emp:
+            user_name = emp[1]
+            office = emp[2]
+            user_label = f"{user_name} (офис {office}, id {user_id})"
+        else:
+            user_label = f"id {user_id}"
+
+        try:
+            items = json.loads(items_raw)
+        except Exception:
+            items = []
+
+        text += f"👤 {user_label} — заказ #{order_id} ({created_at}):\n"
+
+        if delivery_type:
+            if delivery_type == "office":
+                delivery_txt = "доставка в офис"
+            elif delivery_type == "restaurant":
+                delivery_txt = "на подносе в ресторане"
+            else:
+                delivery_txt = delivery_type
+            text += f"  Подача: {delivery_txt}\n"
+
+        if comment:
+            text += f"  Комментарий: {comment}\n"
+
+        order_sum = 0
+        for it in items:
+            title = it.get("title")
+            price = it.get("price", 0)
+            order_sum += price
+            text += f"  • {title} — {price}₽\n"
+
+        text += f"  Итого: {order_sum}₽\n\n"
+
+    kb = [[InlineKeyboardButton(text="⬅ Назад", callback_data=f"adm_shop_{shop_id}")]]
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+
+
+@router.callback_query(F.data.regexp(r"^adm_shop_agg_\d+$"))
+async def adm_shop_agg(callback: CallbackQuery):
+    if not is_manager(callback.from_user.id):
+        await callback.answer("Нет прав", show_alert=True)
+        return
+
+    shop_id = int(callback.data.replace("adm_shop_agg_", ""))
+    shop = get_shop_by_id(shop_id)
+    if not shop:
+        await callback.message.edit_text("Кафе не найдено.")
+        return
+
+    orders = get_orders_by_shop(shop_id)
+    if not orders:
+        await callback.message.edit_text(
+            f"По кафе {shop[1]} пока нет заказов.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="⬅ Назад", callback_data=f"adm_shop_{shop_id}")]
+                ]
+            )
+        )
+        return
+
+    item_stats = {}
+    user_stats = {}
+    total_sum = 0.0
+    order_ids = set()
+
+    for o in orders:
+        order_id, user_id, shop_id_row, items_raw, created_at, delivery_type, comment = o
+        order_ids.add(order_id)
+
+        try:
+            items = json.loads(items_raw)
+        except Exception:
+            items = []
+
+        # учёт по пользователю
+        if user_id not in user_stats:
+            user_stats[user_id] = {"cnt": 0, "sum": 0.0}
+        user_stats[user_id]["cnt"] += 1
+
+        for it in items:
+            title = it.get("title") or "Блюдо"
+            try:
+                price = float(it.get("price") or 0)
+            except Exception:
+                price = 0.0
+
+            key = (title, price)
+            if key not in item_stats:
+                item_stats[key] = {"qty": 0, "sum": 0.0}
+            item_stats[key]["qty"] += 1
+            item_stats[key]["sum"] += price
+
+            total_sum += price
+            user_stats[user_id]["sum"] += price
+
+    text = f"📊 Агрегированный отчёт по кафе {shop[1]}:\n\n"
+    text += f"Всего заказов: {len(order_ids)}\n"
+    text += f"Общая сумма: {int(total_sum)} ₽\n\n"
+
+    if item_stats:
+        text += "По блюдам:\n"
+        for (title, price), st in item_stats.items():
+            text += (
+                f"• {title} — {st['qty']} шт, {int(st['sum'])} ₽ "
+                f"(цена {int(price)} ₽)\n"
+            )
+        text += "\n"
+
+    if user_stats:
+        text += "По сотрудникам:\n"
+        for user_id, st in user_stats.items():
+            emp = get_employee(user_id)
+            if emp:
+                name = emp[1]
+                office = emp[2]
+                user_label = f"{name} (офис {office}, id {user_id})"
+            else:
+                user_label = f"id {user_id}"
+            text += (
+                f"• {user_label} — {st['cnt']} заказ(ов), {int(st['sum'])} ₽\n"
+            )
+
+    kb = [[InlineKeyboardButton(text="⬅ Назад", callback_data=f"adm_shop_{shop_id}")]]
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
 
 
 @router.callback_query(F.data.regexp(r"^adm_shop_additem_\d+$"))
@@ -239,7 +407,7 @@ async def adm_shop_additem_price(message: Message, state: FSMContext):
         return
     try:
         price = float(message.text.replace(",", "."))
-    except:
+    except Exception:
         await message.answer("Некорректная цена. Введите число, например: 150")
         return
 
@@ -258,7 +426,7 @@ async def adm_shop_delchoose(callback: CallbackQuery):
     shop = get_shop_by_id(shop_id)
     try:
         menu = json.loads(shop[3]) if shop and shop[3] else []
-    except:
+    except Exception:
         menu = []
 
     if not menu:
@@ -309,6 +477,65 @@ async def adm_shop_toggleactive(callback: CallbackQuery):
     await adm_list_shops(callback)
 
 
+@router.callback_query(F.data.regexp(r"^adm_shop_delete_\d+$"))
+async def adm_shop_delete(callback: CallbackQuery):
+    if not is_manager(callback.from_user.id):
+        await callback.answer("Нет прав", show_alert=True)
+        return
+
+    shop_id = int(callback.data.replace("adm_shop_delete_", ""))
+    shop = get_shop_by_id(shop_id)
+    if not shop:
+        await callback.answer("Кафе не найдено", show_alert=True)
+        return
+
+    text = (
+        f"Вы действительно хотите *полностью удалить* кафе '{shop[1]}'?\n\n"
+        f"Будут удалены:\n"
+        f"• само кафе\n"
+        f"• все заказы по этому кафе\n\n"
+        f"Это действие необратимо."
+    )
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Да, удалить",
+                    callback_data=f"adm_shop_delete_confirm_{shop_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅ Отмена",
+                    callback_data=f"adm_shop_{shop_id}"
+                )
+            ]
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+
+
+@router.callback_query(F.data.regexp(r"^adm_shop_delete_confirm_\d+$"))
+async def adm_shop_delete_confirm(callback: CallbackQuery):
+    if not is_manager(callback.from_user.id):
+        await callback.answer("Нет прав", show_alert=True)
+        return
+
+    shop_id = int(callback.data.replace("adm_shop_delete_confirm_", ""))
+    shop = get_shop_by_id(shop_id)
+    name = shop[1] if shop else f"id {shop_id}"
+
+    ok = delete_shop(shop_id)
+    if ok:
+        await callback.message.edit_text(f"🔥 Кафе '{name}' и все его заказы были удалены.")
+    else:
+        await callback.message.edit_text("❌ Не удалось удалить кафе (возможно, оно уже удалено).")
+
+    await adm_list_shops(callback)
+
+
 @router.callback_query(F.data == "adm_add_employee")
 async def adm_add_employee_start(callback: CallbackQuery):
     await callback.message.answer("Формат: <tg_id>;<Имя>;<Офис>;<ecard>")
@@ -323,13 +550,13 @@ async def adm_add_employee_finish(message: Message):
             await message.answer("✅ Сотрудник добавлен!")
         else:
             await message.answer("❌ Такой сотрудник уже существует.")
-    except:
+    except Exception:
         return
 
 
 @router.callback_query(F.data == "adm_add_manager")
 async def adm_add_manager_start(callback: CallbackQuery):
-    await callback.message.answer("Введите Telegram ID менеджера (число):")
+    await callback.message.answer("Введите Telegram ID менеджера:")
 
 
 @router.message(F.text.regexp(r"^\d+$"))
