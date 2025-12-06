@@ -44,7 +44,8 @@ async def cmd_start(message: Message):
     user = get_employee(message.from_user.id)
     if not user:
         await message.answer(
-            "Вы не зарегистрированы в системе.\nВаш ID: {}".format(message.from_user.id)
+            "Вы не зарегистрированы в системе.\n"
+            "Ваш ID: {}".format(message.from_user.id)
         )
         return
 
@@ -77,19 +78,55 @@ async def cmd_start(message: Message):
     await message.answer("Выбери действие:", reply_markup=inline_kb)
 
 
-# ======= "НАЗАД" ИЗ "МОИ ЗАКАЗЫ" =======
+# ======= "НАЗАД" ИЗ "МОИ ЗАКАЗЫ" (ИЗ ФАКТА КЛИК ПО CALLBACK) =======
 
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """
-    Возврат к основному меню (как /start), когда нажимаем "Назад" в разделе "Мои заказы".
+    ВАЖНО: здесь НЕЛЬЗЯ просто вызвать cmd_start(callback.message),
+    потому что callback.message.from_user = бот, а не человек.
+    Поэтому берём пользователя из callback.from_user.
     """
     await state.clear()
-    # Перерисуем меню так же, как в /start
-    await cmd_start(callback.message)
+
+    user = get_employee(callback.from_user.id)
+    if not user:
+        # Если человек не зарегистрирован, честно говорим об этом
+        await callback.message.edit_text(
+            "Вы не зарегистрированы в системе.\n"
+            f"Ваш ID: {callback.from_user.id}"
+        )
+        return
+
+    reply_kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(
+                    text="🍱 Открыть мини-приложение",
+                    web_app=WebAppInfo(url=WEBAPP_URL),
+                )
+            ]
+        ],
+        resize_keyboard=True,
+    )
+
+    inline_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🍽 Заказать через бота", callback_data="create_order")],
+            [InlineKeyboardButton(text="📦 Мои заказы", callback_data="orders_history")],
+        ]
+    )
+
+    # Через callback.message.answer отправляем новые сообщения в тот же чат
+    await callback.message.answer(
+        f"Привет, {user[1]}! 👋\n"
+        f"Ты можешь открыть мини-приложение или заказать прямо через бота.",
+        reply_markup=reply_kb,
+    )
+    await callback.message.answer("Выбери действие:", reply_markup=inline_kb)
 
 
-# ======= СТАРЫЙ СЦЕНАРИЙ ЗАКАЗА ЧЕРЕЗ БОТА =======
+# ======= СЦЕНАРИЙ ЗАКАЗА ЧЕРЕЗ БОТА =======
 
 @router.callback_query(F.data == "create_order")
 async def create_order(callback: CallbackQuery, state: FSMContext):
@@ -229,7 +266,7 @@ async def order_history(callback: CallbackQuery):
     text = "📦 Ваши заказы:\n\n"
     kb = []
     for ord_row in orders:
-        order_id, user_id, shop_id, items_raw, created_at = ord_row
+        order_id, user_id_row, shop_id, items_raw, created_at = ord_row
         shop = get_shop_by_id(shop_id)
         shop_name = shop[1] if shop else "Кафе удалено"
         try:
@@ -286,27 +323,39 @@ async def handle_webapp_order(message: Message):
         await message.answer("⚠️ Пришли непонятные данные из мини-приложения.")
         return
 
-    cafe_id = data.get("cafeId")
+    cafe_id_raw = data.get("cafeId")
     cafe_name = data.get("cafeName") or "Кафе"
     items_payload = data.get("items") or []
 
-    if cafe_id is None:
+    if cafe_id_raw is None:
         await message.answer("⚠️ Нет ID кафе в заказе.")
         return
 
-    # ВАЖНО: в index.html должен передаваться числовой id кафе из БД
-    try:
-        cafe_id = int(cafe_id)
-    except Exception:
-        await message.answer(
-            "⚠️ Некорректный ID кафе из мини-приложения.\n"
-            "Убедитесь, что index.html берёт кафе из БД и передаёт числовой id."
-        )
-        return
+    # --- Пытаемся найти кафе по числовому ID ---
+    shop = None
+    cafe_id: int | None = None
 
-    shop = get_shop_by_id(cafe_id)
-    if not shop:
-        await message.answer("⚠️ Это кафе больше недоступно или удалено.")
+    # 1) Попытка: трактуем cafeId как число
+    try:
+        cafe_id = int(cafe_id_raw)
+        shop = get_shop_by_id(cafe_id)
+    except Exception:
+        shop = None
+
+    # 2) Если не нашли по ID, пробуем найти кафе по имени (cafeName)
+    if not shop and cafe_name:
+        shops = get_shops(active_only=False)
+        for s in shops:
+            if s[1] == cafe_name:
+                shop = s
+                cafe_id = s[0]
+                break
+
+    if not shop or cafe_id is None:
+        await message.answer(
+            "⚠️ Не удалось сопоставить кафе из мини-приложения с кафе в системе.\n"
+            "Проверьте, что названия кафе совпадают."
+        )
         return
 
     if not items_payload:
@@ -326,7 +375,7 @@ async def handle_webapp_order(message: Message):
         if qty <= 0:
             continue
 
-        # В БД храним как простой список "title/price" (по одной позиции за единицу)
+        # В БД храним как список "title/price" (по одной записи за каждую единицу)
         for _ in range(qty):
             db_items.append({"title": name, "price": price})
         total_calc += price * qty
