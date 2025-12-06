@@ -27,7 +27,8 @@ from db.db_controller import (
 
 router = Router()
 
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/")  # ЗАМЕНИ или поставь через .env
+# URL мини-приложения (Flask-сайт)
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/")  # ЗАМЕНИ на свой
 
 
 class OrderFSM(StatesGroup):
@@ -35,6 +36,8 @@ class OrderFSM(StatesGroup):
     choose_items = State()
     confirm = State()
 
+
+# ======= ГЛАВНОЕ МЕНЮ /start =======
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
@@ -45,7 +48,7 @@ async def cmd_start(message: Message):
         )
         return
 
-    # Reply-клваиатура с кнопкой открытия мини-аппа
+    # Reply-клавиатура с кнопкой для открытия TG WebApp
     reply_kb = ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -58,6 +61,7 @@ async def cmd_start(message: Message):
         resize_keyboard=True,
     )
 
+    # Инлайн-клавиатура для сценария "через бота"
     inline_kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🍽 Заказать через бота", callback_data="create_order")],
@@ -73,7 +77,19 @@ async def cmd_start(message: Message):
     await message.answer("Выбери действие:", reply_markup=inline_kb)
 
 
-# ========== заказ через бота (старый сценарий) ==========
+# ======= "НАЗАД" ИЗ "МОИ ЗАКАЗЫ" =======
+
+@router.callback_query(F.data == "back_to_menu")
+async def back_to_menu(callback: CallbackQuery, state: FSMContext):
+    """
+    Возврат к основному меню (как /start), когда нажимаем "Назад" в разделе "Мои заказы".
+    """
+    await state.clear()
+    # Перерисуем меню так же, как в /start
+    await cmd_start(callback.message)
+
+
+# ======= СТАРЫЙ СЦЕНАРИЙ ЗАКАЗА ЧЕРЕЗ БОТА =======
 
 @router.callback_query(F.data == "create_order")
 async def create_order(callback: CallbackQuery, state: FSMContext):
@@ -192,12 +208,22 @@ async def cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("❌ Заказ отменён.")
 
 
+# ======= РАЗДЕЛ "МОИ ЗАКАЗЫ" =======
+
 @router.callback_query(F.data == "orders_history")
 async def order_history(callback: CallbackQuery):
     user_id = callback.from_user.id
     orders = get_orders_by_user(user_id)
     if not orders:
-        await callback.message.edit_text("У вас нет заказов.")
+        await callback.message.edit_text(
+            "У вас нет заказов.\n\n"
+            "Можете оформить заказ через бота или мини-приложение.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_menu")]
+                ]
+            )
+        )
         return
 
     text = "📦 Ваши заказы:\n\n"
@@ -221,8 +247,11 @@ async def order_history(callback: CallbackQuery):
             )
         ])
 
-    kb.append([InlineKeyboardButton(text="Назад", callback_data="back_to_menu")])
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    kb.append([InlineKeyboardButton(text="⬅ Назад", callback_data="back_to_menu")])
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
 
 
 @router.callback_query(F.data.regexp(r"^cancel_order_\d+$"))
@@ -238,12 +267,13 @@ async def cancel_order(callback: CallbackQuery):
         )
 
 
-# ========== заказ из мини-аппа (WebApp) ==========
+# ======= ЗАКАЗ ИЗ MINI APP (WebApp.sendData) =======
 
 @router.message(F.web_app_data)
 async def handle_webapp_order(message: Message):
     """
-    Принимаем JSON из WebApp (tg.sendData), сохраняем заказ в БД.
+    Принимаем JSON из WebApp (tg.sendData), сохраняем заказ в БД
+    и он должен появиться в "Мои заказы".
     """
     try:
         raw = message.web_app_data.data
@@ -264,10 +294,14 @@ async def handle_webapp_order(message: Message):
         await message.answer("⚠️ Нет ID кафе в заказе.")
         return
 
+    # ВАЖНО: в index.html должен передаваться числовой id кафе из БД
     try:
         cafe_id = int(cafe_id)
     except Exception:
-        await message.answer("⚠️ Некорректный ID кафе.")
+        await message.answer(
+            "⚠️ Некорректный ID кафе из мини-приложения.\n"
+            "Убедитесь, что index.html берёт кафе из БД и передаёт числовой id."
+        )
         return
 
     shop = get_shop_by_id(cafe_id)
@@ -292,6 +326,7 @@ async def handle_webapp_order(message: Message):
         if qty <= 0:
             continue
 
+        # В БД храним как простой список "title/price" (по одной позиции за единицу)
         for _ in range(qty):
             db_items.append({"title": name, "price": price})
         total_calc += price * qty
