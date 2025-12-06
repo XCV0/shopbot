@@ -1,4 +1,3 @@
-# webapp.py
 import json
 from flask import Flask, render_template
 from db.db_controller import get_shops, init_db
@@ -6,17 +5,10 @@ from db.db_controller import get_shops, init_db
 app = Flask(__name__)
 
 
-@app.before_first_request
-def _init_db():
-    # чтобы таблицы точно были созданы
-    init_db()
-
+init_db()
 
 @app.route("/")
 def index():
-    """
-    Отдаём мини-апп и передаём в него список кафе + меню из БД.
-    """
     shops = get_shops(active_only=True)
     cafes = {}
 
@@ -35,7 +27,7 @@ def index():
                 "id": f"{shop_id}_{idx}",
                 "name": title,
                 "price": price,
-                "description": ""  # в БД её нет, поэтому пусто
+                "description": ""
             })
 
         cafes[str(shop_id)] = {
@@ -49,11 +41,5 @@ def index():
     return render_template("index.html", cafes_json=cafes_json)
 
 
-@app.route("/health")
-def health():
-    return {"status": "ok"}
-
-
 if __name__ == "__main__":
-    # В бою лучше запускать через gunicorn/uwsgi за nginx с HTTPS
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=443, debug=True)

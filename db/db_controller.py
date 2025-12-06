@@ -1,4 +1,3 @@
-# db/db_controller.py
 import sqlite3
 import json
 from pathlib import Path
