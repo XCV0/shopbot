@@ -1,16 +1,15 @@
 # db/db_controller.py
-
 import sqlite3
 import json
 from pathlib import Path
 from typing import List, Dict, Optional
+from datetime import datetime
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "restaurant.db"
 
 
 def get_connection():
-    # Enforce row factory if needed later
     conn = sqlite3.connect(DB_PATH)
     return conn
 
@@ -47,17 +46,26 @@ def init_db():
     );
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        shop_id INTEGER NOT NULL,
+        items TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    """)
+
     conn.commit()
     conn.close()
 
 
-# ========= EMPLOYEES =========
-
+# ========== EMPLOYEES ==========
 def checker(tg_id: int) -> bool:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM employees WHERE tg_id = ?", (tg_id,))
-    exists = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM employees WHERE tg_id = ?", (tg_id,))
+    exists = cur.fetchone()
     conn.close()
     return exists is not None
 
@@ -66,11 +74,9 @@ def add_employee(tg_id: int, name: str, office: str, ecard: str) -> bool:
     if checker(tg_id):
         return False
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO employees (tg_id, name, office, ecard)
-        VALUES (?, ?, ?, ?)
-    """, (tg_id, name, office, ecard))
+    cur = conn.cursor()
+    cur.execute("INSERT INTO employees (tg_id, name, office, ecard) VALUES (?, ?, ?, ?)",
+                (tg_id, name, office, ecard))
     conn.commit()
     conn.close()
     return True
@@ -78,83 +84,93 @@ def add_employee(tg_id: int, name: str, office: str, ecard: str) -> bool:
 
 def get_employee(tg_id: int) -> Optional[tuple]:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM employees WHERE tg_id = ?", (tg_id,))
-    row = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM employees WHERE tg_id = ?", (tg_id,))
+    row = cur.fetchone()
     conn.close()
     return row
 
 
-# ========= MANAGERS =========
-
+# ========== MANAGERS ==========
 def add_manager(tg_id: int):
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO managers (tg_id) VALUES (?)", (tg_id,))
+    cur = conn.cursor()
+    cur.execute("INSERT OR REPLACE INTO managers (tg_id) VALUES (?)", (tg_id,))
     conn.commit()
     conn.close()
 
 
 def is_manager(tg_id: int) -> bool:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM managers WHERE tg_id = ?", (tg_id,))
-    exists = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM managers WHERE tg_id = ?", (tg_id,))
+    exists = cur.fetchone()
     conn.close()
     return exists is not None
 
 
-# ========= SHOPS & MENU HELPERS =========
+def get_managers() -> List[int]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT tg_id FROM managers")
+    rows = cur.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
 
+
+# ========== SHOPS & MENU ==========
 def _parse_menu(raw: Optional[str]) -> List[Dict]:
     if not raw:
         return []
     try:
-        menu = json.loads(raw)
-        if isinstance(menu, list):
-            return menu
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return data
     except:
         pass
     return []
 
 
-def add_shop(name: str, address: str, menu: List[Dict], time_available: str, day_available: str, report_time: str, active: bool = True):
+def add_shop(name: str, address: str, menu: List[Dict], time_available: str, day_available: str,
+             report_time: str, active: bool = True) -> int:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO shops (name, address, menu, time_available, day_available, report_time, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (name, address, json.dumps(menu), time_available, day_available, report_time, int(active)))
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO shops (name, address, menu, time_available, day_available, report_time, active) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (name, address, json.dumps(menu, ensure_ascii=False), time_available, day_available, report_time, int(active))
+    )
+    shop_id = cur.lastrowid
     conn.commit()
     conn.close()
+    return shop_id
 
 
 def get_shops(active_only: bool = True) -> List[tuple]:
     conn = get_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
     if active_only:
-        cursor.execute("SELECT * FROM shops WHERE active = 1")
+        cur.execute("SELECT * FROM shops WHERE active = 1")
     else:
-        cursor.execute("SELECT * FROM shops")
-    rows = cursor.fetchall()
+        cur.execute("SELECT * FROM shops")
+    rows = cur.fetchall()
     conn.close()
     return rows
 
 
 def get_shop_by_id(shop_id: int) -> Optional[tuple]:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM shops WHERE id = ?", (shop_id,))
-    row = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM shops WHERE id = ?", (shop_id,))
+    row = cur.fetchone()
     conn.close()
     return row
 
 
 def set_shop_active(shop_id: int, active: bool) -> bool:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE shops SET active = ? WHERE id = ?", (int(active), shop_id))
-    updated = cursor.rowcount
+    cur = conn.cursor()
+    cur.execute("UPDATE shops SET active = ? WHERE id = ?", (int(active), shop_id))
+    updated = cur.rowcount
     conn.commit()
     conn.close()
     return updated > 0
@@ -162,15 +178,15 @@ def set_shop_active(shop_id: int, active: bool) -> bool:
 
 def add_item_to_shop(shop_id: int, title: str, price: float) -> bool:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT menu FROM shops WHERE id = ?", (shop_id,))
-    row = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT menu FROM shops WHERE id = ?", (shop_id,))
+    row = cur.fetchone()
     if row is None:
         conn.close()
         return False
     menu = _parse_menu(row[0])
-    menu.append({"title": title, "price": float(price)})
-    cursor.execute("UPDATE shops SET menu = ? WHERE id = ?", (json.dumps(menu), shop_id))
+    menu.append({"title": str(title), "price": float(price)})
+    cur.execute("UPDATE shops SET menu = ? WHERE id = ?", (json.dumps(menu, ensure_ascii=False), shop_id))
     conn.commit()
     conn.close()
     return True
@@ -178,9 +194,9 @@ def add_item_to_shop(shop_id: int, title: str, price: float) -> bool:
 
 def remove_item_from_shop(shop_id: int, item_index: int) -> bool:
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT menu FROM shops WHERE id = ?", (shop_id,))
-    row = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT menu FROM shops WHERE id = ?", (shop_id,))
+    row = cur.fetchone()
     if row is None:
         conn.close()
         return False
@@ -189,7 +205,55 @@ def remove_item_from_shop(shop_id: int, item_index: int) -> bool:
         conn.close()
         return False
     menu.pop(item_index)
-    cursor.execute("UPDATE shops SET menu = ? WHERE id = ?", (json.dumps(menu), shop_id))
+    cur.execute("UPDATE shops SET menu = ? WHERE id = ?", (json.dumps(menu, ensure_ascii=False), shop_id))
     conn.commit()
     conn.close()
     return True
+
+
+# ========== ORDERS ==========
+def add_order(user_id: int, shop_id: int, items: List[Dict]) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO orders (user_id, shop_id, items, created_at) VALUES (?, ?, ?, ?)",
+                (user_id, shop_id, json.dumps(items, ensure_ascii=False), datetime.now().isoformat()))
+    order_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return order_id
+
+
+def get_orders_by_shop(shop_id: int) -> List[tuple]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, user_id, shop_id, items, created_at FROM orders WHERE shop_id = ?", (shop_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_orders_by_user(user_id: int) -> List[tuple]:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, user_id, shop_id, items, created_at FROM orders WHERE user_id = ?", (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def delete_order(order_id: int, user_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM orders WHERE id = ? AND user_id = ?", (order_id, user_id))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return deleted > 0
+
+
+def clear_orders_for_shop(shop_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM orders WHERE shop_id = ?", (shop_id,))
+    conn.commit()
+    conn.close()

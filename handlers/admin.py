@@ -32,11 +32,9 @@ class AdminFSM(StatesGroup):
     add_item_price = State()
 
 
-# helper: render management card for a shop (edits message)
 async def render_shop_management(message_obj, shop_id: int):
     shop = get_shop_by_id(shop_id)
     if not shop:
-        # use answer_text if edit not available
         try:
             await message_obj.edit_text("Кафе не найдено.")
         except:
@@ -52,14 +50,13 @@ async def render_shop_management(message_obj, shop_id: int):
                              callback_data=f"adm_shop_toggleactive_{shop_id}")],
         [InlineKeyboardButton(text="⬅ Назад (список)", callback_data="adm_list_shops")]
     ]
-    text = f"Управление кафе: {shop[1]}\nАдрес: {shop[2]}\n\nСостояние: {'активно' if active else 'неактивно'}"
+    text = f"Управление кафе: {shop[1]}\nАдрес: {shop[2]}\n\nСостояние: {'активно' if active else 'неактивно'}\nReport time: {shop[6] or 'не задан'}"
     try:
         await message_obj.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     except:
         await message_obj.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-# Admin entry
 @router.message(Command("admin"))
 async def admin_start(message: Message):
     if not is_manager(message.from_user.id):
@@ -72,11 +69,9 @@ async def admin_start(message: Message):
         [InlineKeyboardButton(text="👤 Добавить сотрудника", callback_data="adm_add_employee")],
         [InlineKeyboardButton(text="⭐ Добавить менеджера", callback_data="adm_add_manager")]
     ]
-
     await message.answer("Панель администратора:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-# Add shop flow (keeps manual JSON optional)
 @router.callback_query(F.data == "adm_add_shop")
 async def adm_add_shop(callback: CallbackQuery, state: FSMContext):
     if not is_manager(callback.from_user.id):
@@ -114,14 +109,15 @@ async def adm_shop_menu_manual(message: Message, state: FSMContext):
             menu = json.loads(text)
             if not isinstance(menu, list):
                 raise ValueError
-            # normalize items (ensure title & price)
             norm = []
             for it in menu:
-                title = it.get("title") if isinstance(it, dict) else None
-                price = it.get("price") if isinstance(it, dict) else None
-                if title is None or price is None:
+                if not isinstance(it, dict):
                     continue
-                norm.append({"title": str(title), "price": float(price)})
+                t = it.get("title")
+                p = it.get("price")
+                if t is None or p is None:
+                    continue
+                norm.append({"title": str(t), "price": float(p)})
             await state.update_data(menu=norm)
         except Exception:
             await message.answer("Ошибка в JSON. Введите корректный JSON или /skipmenu")
@@ -160,7 +156,6 @@ async def adm_shop_report_time(message: Message, state: FSMContext):
     await message.answer("✅ Кафе добавлено. Меню можно редактировать в списке кафе.")
 
 
-# List shops
 @router.callback_query(F.data == "adm_list_shops")
 async def adm_list_shops(callback: CallbackQuery):
     if not is_manager(callback.from_user.id):
@@ -175,24 +170,19 @@ async def adm_list_shops(callback: CallbackQuery):
     for s in shops:
         active = "🟢" if s[7] == 1 else "🔴"
         kb.append([InlineKeyboardButton(text=f"{active} {s[1]} — {s[2]}", callback_data=f"adm_shop_{s[0]}")])
-
     await callback.message.edit_text("Список кафе (нажмите чтобы редактировать):", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-# Shop root — only exact adm_shop_<digits>, avoids catching other adm_shop_*
 @router.callback_query(F.data.regexp(r"^adm_shop_\d+$"))
 async def adm_shop_root(callback: CallbackQuery):
-    payload = callback.data.replace("adm_shop_", "")
-    shop_id = int(payload)
+    shop_id = int(callback.data.replace("adm_shop_", ""))
     await render_shop_management(callback.message, shop_id)
 
 
-# View menu — exact
 @router.callback_query(F.data.regexp(r"^adm_shop_viewmenu_\d+$"))
 async def adm_shop_viewmenu(callback: CallbackQuery):
     shop_id = int(callback.data.replace("adm_shop_viewmenu_", ""))
     shop = get_shop_by_id(shop_id)
-    menu = []
     try:
         menu = json.loads(shop[3]) if shop and shop[3] else []
     except:
@@ -207,12 +197,10 @@ async def adm_shop_viewmenu(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-# Add item flow (starts from button) — exact
 @router.callback_query(F.data.regexp(r"^adm_shop_additem_\d+$"))
 async def adm_shop_additem_start(callback: CallbackQuery, state: FSMContext):
     shop_id = int(callback.data.replace("adm_shop_additem_", ""))
     await state.update_data(add_item_shop=shop_id)
-    # reply to the admin in chat (not editing card), then return to card after add
     await callback.message.answer("Введите название блюда:")
     await state.set_state(AdminFSM.add_item_title)
 
@@ -242,19 +230,16 @@ async def adm_shop_additem_price(message: Message, state: FSMContext):
     ok = add_item_to_shop(shop_id, title, price)
     await state.clear()
     if ok:
-        await message.answer(f"✅ Позиция '{title}' добавлена в кафе.")
+        await message.answer(f"✅ Позиция '{title}' добавлена.")
     else:
         await message.answer("❌ Ошибка при добавлении позиции.")
-    # refresh management card
     await render_shop_management(message, shop_id)
 
 
-# Choose item to delete (exact)
 @router.callback_query(F.data.regexp(r"^adm_shop_delchoose_\d+$"))
 async def adm_shop_delchoose(callback: CallbackQuery):
     shop_id = int(callback.data.replace("adm_shop_delchoose_", ""))
     shop = get_shop_by_id(shop_id)
-    menu = []
     try:
         menu = json.loads(shop[3]) if shop and shop[3] else []
     except:
@@ -266,42 +251,25 @@ async def adm_shop_delchoose(callback: CallbackQuery):
 
     kb = []
     for i, item in enumerate(menu):
-        kb.append([
-            InlineKeyboardButton(
-                text=f"Удалить: {item.get('title')} — {item.get('price')}₽",
-                callback_data=f"adm_shop_del_{shop_id}_{i}"
-            )
-        ])
-
+        kb.append([InlineKeyboardButton(text=f"Удалить: {item.get('title')} — {item.get('price')}₽",
+                                        callback_data=f"adm_shop_del_{shop_id}_{i}")])
     kb.append([InlineKeyboardButton(text="Отмена", callback_data=f"adm_shop_{shop_id}")])
-
     await callback.message.edit_text("Выберите позицию для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-# Delete item — exact
 @router.callback_query(F.data.regexp(r"^adm_shop_del_\d+_\d+$"))
 async def adm_shop_del(callback: CallbackQuery):
-    # callback.data like adm_shop_del_<shopid>_<index>
-    try:
-        parts = callback.data.split("_")
-        # ["adm","shop","del","<shopid>","<index>"]
-        shop_id = int(parts[3])
-        idx = int(parts[4])
-    except Exception:
-        await callback.answer("Некорректные данные", show_alert=True)
-        return
-
+    parts = callback.data.split("_")
+    shop_id = int(parts[3])
+    idx = int(parts[4])
     ok = remove_item_from_shop(shop_id, idx)
     if ok:
         await callback.message.answer("✅ Позиция удалена.")
     else:
         await callback.message.answer("❌ Не удалось удалить (возможно неверный индекс).")
-
-    # refresh management card
     await render_shop_management(callback.message, shop_id)
 
 
-# Toggle active — exact
 @router.callback_query(F.data.regexp(r"^adm_shop_toggleactive_\d+$"))
 async def adm_shop_toggleactive(callback: CallbackQuery):
     shop_id = int(callback.data.replace("adm_shop_toggleactive_", ""))
@@ -318,7 +286,6 @@ async def adm_shop_toggleactive(callback: CallbackQuery):
     await adm_list_shops(callback)
 
 
-# Add employee (simple)
 @router.callback_query(F.data == "adm_add_employee")
 async def adm_add_employee_start(callback: CallbackQuery):
     await callback.message.answer("Формат: <tg_id>;<Имя>;<Офис>;<ecard>")
@@ -337,7 +304,6 @@ async def adm_add_employee_finish(message: Message):
         return
 
 
-# Add manager
 @router.callback_query(F.data == "adm_add_manager")
 async def adm_add_manager_start(callback: CallbackQuery):
     await callback.message.answer("Введите Telegram ID менеджера (число):")
