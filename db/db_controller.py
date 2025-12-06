@@ -60,7 +60,7 @@ def init_db():
     conn.close()
 
 
-# ========== EMPLOYEES ==========
+# Сотрудники
 def checker(tg_id: int) -> bool:
     conn = get_connection()
     cur = conn.cursor()
@@ -91,7 +91,7 @@ def get_employee(tg_id: int) -> Optional[tuple]:
     return row
 
 
-# ========== MANAGERS ==========
+# Менеджеры
 def add_manager(tg_id: int):
     conn = get_connection()
     cur = conn.cursor()
@@ -118,7 +118,7 @@ def get_managers() -> List[int]:
     return [r[0] for r in rows]
 
 
-# ========== SHOPS & MENU ==========
+# Магазины и меню
 def _parse_menu(raw: Optional[str]) -> List[Dict]:
     if not raw:
         return []

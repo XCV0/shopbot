@@ -27,8 +27,8 @@ from db.db_controller import (
 
 router = Router()
 
-# URL мини-приложения (Flask-сайт)
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/")  # ЗАМЕНИ на свой
+# URL tg app
+WEBAPP_URL = "https://ixipa.ru/"
 
 
 class OrderFSM(StatesGroup):
@@ -37,8 +37,7 @@ class OrderFSM(StatesGroup):
     confirm = State()
 
 
-# ======= ГЛАВНОЕ МЕНЮ /start =======
-
+# ГЛАВНОЕ МЕНЮ
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     user = get_employee(message.from_user.id)
@@ -78,8 +77,7 @@ async def cmd_start(message: Message):
     await message.answer("Выбери действие:", reply_markup=inline_kb)
 
 
-# ======= "НАЗАД" ИЗ "МОИ ЗАКАЗЫ" (ИЗ ФАКТА КЛИК ПО CALLBACK) =======
-
+# back button
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """
@@ -126,8 +124,7 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("Выбери действие:", reply_markup=inline_kb)
 
 
-# ======= СЦЕНАРИЙ ЗАКАЗА ЧЕРЕЗ БОТА =======
-
+# Заказ через бота | Блок
 @router.callback_query(F.data == "create_order")
 async def create_order(callback: CallbackQuery, state: FSMContext):
     shops = get_shops(active_only=True)
@@ -245,7 +242,7 @@ async def cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("❌ Заказ отменён.")
 
 
-# ======= РАЗДЕЛ "МОИ ЗАКАЗЫ" =======
+# Мои заказы
 
 @router.callback_query(F.data == "orders_history")
 async def order_history(callback: CallbackQuery):
@@ -304,7 +301,7 @@ async def cancel_order(callback: CallbackQuery):
         )
 
 
-# ======= ЗАКАЗ ИЗ MINI APP (WebApp.sendData) =======
+# MINI app заказ
 
 @router.message(F.web_app_data)
 async def handle_webapp_order(message: Message):
@@ -375,7 +372,6 @@ async def handle_webapp_order(message: Message):
         if qty <= 0:
             continue
 
-        # В БД храним как список "title/price" (по одной записи за каждую единицу)
         for _ in range(qty):
             db_items.append({"title": name, "price": price})
         total_calc += price * qty

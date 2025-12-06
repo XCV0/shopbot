@@ -24,11 +24,9 @@ from handlers import users, admin
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Часовой пояс МСК
+
 SCHED_TZ = timezone("Europe/Moscow")
 scheduler = AsyncIOScheduler(timezone=SCHED_TZ)
-
-BOT_TOKEN = os.getenv("BOT_TOKEN", "PASTE_YOUR_TOKEN_HERE")  # замени на свой токен
 
 
 async def send_report_for_shop(bot: Bot, shop_id: int):
@@ -106,7 +104,7 @@ def start_scheduler(bot: Bot):
 async def main():
     init_db()
 
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(token="8404133001:AAHEW9DXaKErO4gD_8rXHSa-XQ13X1Xbu8c")
     dp = Dispatcher()
 
     dp.include_router(users.router)
