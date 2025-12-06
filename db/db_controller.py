@@ -53,14 +53,19 @@ def init_db():
 def add_employee(tg_id, name, office, ecard):
     conn = get_connection()
     cursor = conn.cursor()
-
+    
+    if checker(tg_id):
+        conn.close()
+        return False
+    
     cursor.execute("""
-        INSERT OR REPLACE INTO employees (tg_id, name, office, ecard)
+        INSERT INTO employees (tg_id, name, office, ecard)
         VALUES (?, ?, ?, ?)
     """, (tg_id, name, office, ecard))
 
     conn.commit()
     conn.close()
+    return True
 
 
 def get_employee(tg_id):
@@ -134,3 +139,13 @@ def get_shop_by_id(shop_id):
 
     conn.close()
     return row
+
+def checker(tg_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT 1; FROM employees WHERE tg_id = ?", (tg_id,))
+    exists = cursor.fetchone()
+
+    conn.close()
+    return exists is not None
