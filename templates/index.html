@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Заказ обеда</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: #05060a;
+            --card-color: #111320;
+            --accent: #ffc72c;
+            --accent-soft: rgba(255, 199, 44, 0.16);
+            --text-main: #ffffff;
+            --text-muted: #a0a4b8;
+            --danger: #ff4d4d;
+            --border-radius-lg: 16px;
+            --border-radius-md: 12px;
+            --border-radius-pill: 999px;
+            --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.45);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: radial-gradient(circle at top, #17192b 0, #05060a 45%, #000000 100%);
+            color: var(--text-main);
+            padding: 16px;
+        }
+
+        .app { max-width: 640px; margin: 0 auto; }
+
+        .app-header { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+
+        .app-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+        h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.03em; }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: var(--border-radius-pill);
+            background: var(--accent-soft);
+            border: 1px solid rgba(255, 199, 44, 0.4);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .app-subtitle { font-size: 14px; color: var(--text-muted); }
+
+        .app-user { font-size: 13px; color: var(--text-muted); }
+
+        .card {
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.6));
+            border-radius: var(--border-radius-lg);
+            padding: 14px 14px 12px;
+            box-shadow: var(--shadow-soft);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(12px);
+            margin-bottom: 12px;
+        }
+
+        .card-header-row {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+        }
+
+        .card-title { font-size: 16px; font-weight: 600; }
+
+        .card-step {
+            font-size: 11px; text-transform: uppercase;
+            letter-spacing: 0.14em; color: var(--accent);
+        }
+
+        .card-description { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+
+        .cafes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .cafe-btn {
+            border-radius: var(--border-radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(11, 13, 30, 0.9);
+            color: var(--text-main);
+            padding: 10px 10px 9px;
+            font-size: 13px;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, border-color 0.12s.ease-out, background 0.12s ease-out;
+        }
+
+        .cafe-btn span { font-size: 11px; color: var(--text-muted); }
+
+        .cafe-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45); }
+
+        .cafe-btn.active {
+            border-color: var(--accent);
+            background: radial-gradient(circle at top, rgba(255, 199, 44, 0.35), rgba(6, 7, 18, 0.95));
+        }
+
+        .menu-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+
+        .menu-item {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            padding: 8px 10px; border-radius: 12px;
+            background: rgba(12, 14, 28, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .menu-item-main { flex: 1; }
+
+        .menu-item-name { font-size: 14px; font-weight: 500; }
+
+        .menu-item-meta { font-size: 12px; color: var(--text-muted); }
+
+        .menu-item-price { font-size: 13px; font-weight: 600; margin-top: 4px; }
+
+        .menu-counter { display: flex; align-items: center; gap: 6px; }
+
+        .counter-btn {
+            width: 28px; height: 28px; border-radius: 999px; border: none;
+            cursor: pointer; font-size: 18px; line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(255, 255, 255, 0.06); color: var(--text-main);
+        }
+
+        .counter-btn.minus { font-size: 16px; }
+
+        .counter-btn:active { transform: scale(0.95); }
+
+        .counter-value { min-width: 22px; text-align: center; font-size: 13px; }
+
+        .delivery-options { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+
+        .radio-option {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 10px; border-radius: 10px;
+            background: rgba(12, 14, 28, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            font-size: 13px;
+        }
+
+        .radio-option input { width: 16px; height: 16px; }
+
+        textarea {
+            width: 100%; margin-top: 8px; border-radius: 10px;
+            padding: 8px 10px; font-size: 13px;
+            background: rgba(10, 12, 24, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+            resize: vertical;
+            min-height: 48px;
+        }
+
+        textarea::placeholder { color: var(--text-muted); }
+
+        .summary-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 4px; font-size: 13px; }
+
+        .summary-item-row { display: flex; justify-content: space-between; gap: 8px; }
+
+        .summary-item-name { flex: 1; }
+
+        .summary-item-qty { color: var(--text-muted); }
+
+        .summary-empty { font-size: 13px; color: var(--text-muted); }
+
+        .summary-footer {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px; margin-top: 8px;
+        }
+
+        .summary-total { font-weight: 600; font-size: 14px; }
+
+        .btn-primary {
+            flex: 1; padding: 10px 14px;
+            border-radius: var(--border-radius-pill); border: none; cursor: pointer;
+            background: linear-gradient(135deg, #ffdd63, #ffb300);
+            color: #000; font-weight: 600; font-size: 14px;
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            box-shadow: 0 14px 36px rgba(255, 191, 64, 0.38);
+        }
+
+        .btn-primary:active { transform: translateY(1px); box-shadow: 0 6px 18px rgba(255, 191, 64, 0.4); }
+
+        .hint { margin-top: 6px; font-size: 11px; color: var(--text-muted); }
+
+        .danger-text { color: var(--danger); font-size: 12px; margin-top: 4px; }
+
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            h1 { font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- сюда Flask подставит JSON с кафе -->
+    <script>
+        window.CAFES = {{ cafes_json|safe }};
+    </script>
+
+    <main class="app">
+        <header class="app-header">
+            <div class="app-title-row">
+                <h1>Заказ обеда</h1>
+                <div class="badge">TG mini app</div>
+            </div>
+            <p class="app-subtitle">Выберите кафе, соберите заказ и отправьте его в бота.</p>
+            <p class="app-user" id="user-name"></p>
+        </header>
+
+        <section class="card">
+            <div class="card-header-row">
+                <div class="card-title">Кафе</div>
+                <div class="card-step">Шаг 1</div>
+            </div>
+            <p class="card-description">Где вы хотите пообедать сегодня?</p>
+            <div class="cafes" id="cafe-list"></div>
+        </section>
+
+        <section class="card" id="menu-section" hidden>
+            <div class="card-header-row">
+                <div class="card-title">Меню <span id="menu-cafe-name"></span></div>
+                <div class="card-step">Шаг 2</div>
+            </div>
+            <p class="card-description">Добавьте блюда, которые хотите заказать.</p>
+            <div class="menu-list" id="menu-items"></div>
+        </section>
+
+        <section class="card" id="delivery-section" hidden>
+            <div class="card-header-row">
+                <div class="card-title">Подача</div>
+                <div class="card-step">Шаг 3</div>
+            </div>
+            <p class="card-description">Как вы хотите получить обед?</p>
+            <div class="delivery-options">
+                <label class="radio-option">
+                    <input type="radio" name="delivery" value="office" checked />
+                    <span>Доставка в офис</span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="delivery" value="restaurant" />
+                    <span>На подносе в ресторане</span>
+                </label>
+            </div>
+            <textarea id="comment" placeholder="Комментарий к заказу (к какому столу принести, без лука и т.п.)"></textarea>
+        </section>
+
+        <section class="card" id="summary-section" hidden>
+            <div class="card-header-row">
+                <div class="card-title">Итог</div>
+                <div class="card-step">Шаг 4</div>
+            </div>
+            <p class="card-description">Проверьте заказ перед отправкой в Telegram.</p>
+            <div class="summary-list" id="summary-list"></div>
+            <p class="summary-empty" id="summary-empty">Блюда ещё не выбраны.</p>
+            <div class="summary-footer">
+                <span class="summary-total" id="summary-total">Итого: 0 ₽</span>
+                <button class="btn-primary" id="submit-order">
+                    Отправить заказ
+                </button>
+            </div>
+            <p class="hint">Кнопка отправит структуру заказа в вашего Telegram-бота через <code>WebApp.sendData</code>.</p>
+            <p class="danger-text" id="warning"></p>
+        </section>
+    </main>
+
+    <script>
+        const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+        if (tg) {
+            tg.ready();
+            tg.expand();
+
+            const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+            if (user) {
+                const name = [user.first_name, user.last_name].filter(Boolean).join(' ');
+                const userEl = document.getElementById('user-name');
+                userEl.textContent = `Для: ${name}`;
+            }
+        }
+
+        // cafes из БД
+        const cafes = window.CAFES || {};
+
+        const state = {
+            cafeId: null,
+            items: {} // { itemId: qty }
+        };
+
+        const cafeListEl = document.getElementById('cafe-list');
+        const menuSection = document.getElementById('menu-section');
+        const menuCafeName = document.getElementById('menu-cafe-name');
+        const menuItemsEl = document.getElementById('menu-items');
+        const deliverySection = document.getElementById('delivery-section');
+        const summarySection = document.getElementById('summary-section');
+        const summaryListEl = document.getElementById('summary-list');
+        const summaryEmptyEl = document.getElementById('summary-empty');
+        const summaryTotalEl = document.getElementById('summary-total');
+        const submitBtn = document.getElementById('submit-order');
+        const commentEl = document.getElementById('comment');
+        const warningEl = document.getElementById('warning');
+
+        function renderCafes() {
+            cafeListEl.innerHTML = '';
+            const cafesArr = Object.values(cafes);
+            cafesArr.forEach((cafe) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'cafe-btn';
+                btn.innerHTML = `
+                    <strong>${cafe.title}</strong>
+                    <span>${cafe.subtitle}</span>
+                `;
+                btn.addEventListener('click', () => selectCafe(cafe.id));
+                cafeListEl.appendChild(btn);
+            });
+
+            if (cafesArr.length === 0) {
+                const p = document.createElement('p');
+                p.textContent = 'Нет доступных кафе.';
+                p.style.fontSize = '13px';
+                p.style.color = '#a0a4b8';
+                cafeListEl.appendChild(p);
+            }
+        }
+
+        function selectCafe(cafeId) {
+            state.cafeId = cafeId;
+            state.items = {};
+
+            const cafesArr = Object.values(cafes);
+            Array.from(cafeListEl.children).forEach((btn, index) => {
+                const cafe = cafesArr[index];
+                if (!cafe) return;
+                if (cafe.id === cafeId) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            renderMenu();
+            deliverySection.hidden = false;
+            summarySection.hidden = false;
+            warningEl.textContent = '';
+        }
+
+        function renderMenu() {
+            const cafe = Object.values(cafes).find(c => c.id === state.cafeId);
+            if (!cafe) return;
+
+            menuSection.hidden = false;
+            menuCafeName.textContent = `«${cafe.title}»`;
+
+            menuItemsEl.innerHTML = '';
+
+            cafe.items.forEach((item) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'menu-item';
+
+                const main = document.createElement('div');
+                main.className = 'menu-item-main';
+                main.innerHTML = `
+                    <div class="menu-item-name">${item.name}</div>
+                    <div class="menu-item-meta">${item.description || ''}</div>
+                    <div class="menu-item-price">${item.price} ₽</div>
+                `;
+
+                const counter = document.createElement('div');
+                counter.className = 'menu-counter';
+
+                const minus = document.createElement('button');
+                minus.type = 'button';
+                minus.className = 'counter-btn minus';
+                minus.textContent = '−';
+
+                const value = document.createElement('span');
+                value.className = 'counter-value';
+                value.textContent = state.items[item.id] || 0;
+
+                const plus = document.createElement('button');
+                plus.type = 'button';
+                plus.className = 'counter-btn plus';
+                plus.textContent = '+';
+
+                minus.addEventListener('click', () => changeQty(item.id, -1, value));
+                plus.addEventListener('click', () => changeQty(item.id, +1, value));
+
+                counter.appendChild(minus);
+                counter.appendChild(value);
+                counter.appendChild(plus);
+
+                wrapper.appendChild(main);
+                wrapper.appendChild(counter);
+                menuItemsEl.appendChild(wrapper);
+            });
+
+            updateSummary();
+        }
+
+        function changeQty(itemId, delta, valueEl) {
+            const current = state.items[itemId] || 0;
+            let next = current + delta;
+            if (next < 0) next = 0;
+            state.items[itemId] = next;
+            valueEl.textContent = next;
+            updateSummary();
+        }
+
+        function updateSummary() {
+            summaryListEl.innerHTML = '';
+
+            if (!state.cafeId) {
+                summaryEmptyEl.textContent = 'Сначала выберите кафе.';
+                summaryTotalEl.textContent = 'Итого: 0 ₽';
+                return;
+            }
+
+            const cafe = Object.values(cafes).find(c => c.id === state.cafeId);
+            if (!cafe) {
+                summaryEmptyEl.textContent = 'Кафе не найдено.';
+                summaryTotalEl.textContent = 'Итого: 0 ₽';
+                return;
+            }
+
+            const selected = Object.entries(state.items).filter(([, qty]) => qty > 0);
+
+            if (selected.length === 0) {
+                summaryEmptyEl.textContent = 'Блюда ещё не выбраны.';
+                summaryTotalEl.textContent = 'Итого: 0 ₽';
+                return;
+            }
+
+            summaryEmptyEl.textContent = '';
+
+            let total = 0;
+
+            selected.forEach(([itemId, qty]) => {
+                const item = cafe.items.find((i) => i.id === itemId);
+                if (!item) return;
+
+                const row = document.createElement('div');
+                row.className = 'summary-item-row';
+
+                const nameEl = document.createElement('span');
+                nameEl.className = 'summary-item-name';
+                nameEl.textContent = item.name;
+
+                const qtyEl = document.createElement('span');
+                qtyEl.className = 'summary-item-qty';
+                qtyEl.textContent = `×${qty}`;
+
+                const priceEl = document.createElement('span');
+                priceEl.className = 'summary-item-price';
+                priceEl.textContent = `${item.price * qty} ₽`;
+
+                row.appendChild(nameEl);
+                row.appendChild(qtyEl);
+                row.appendChild(priceEl);
+                summaryListEl.appendChild(row);
+
+                total += item.price * qty;
+            });
+
+            summaryTotalEl.textContent = `Итого: ${total} ₽`;
+        }
+
+        submitBtn.addEventListener('click', () => {
+            if (!state.cafeId) {
+                warningEl.textContent = 'Выберите кафе.';
+                return;
+            }
+
+            const cafe = Object.values(cafes).find(c => c.id === state.cafeId);
+            if (!cafe) {
+                warningEl.textContent = 'Кафе не найдено.';
+                return;
+            }
+
+            const selected = Object.entries(state.items).filter(([, qty]) => qty > 0);
+
+            if (selected.length === 0) {
+                warningEl.textContent = 'Добавьте хотя бы одно блюдо.';
+                return;
+            }
+
+            const deliveryInput = document.querySelector('input[name="delivery"]:checked');
+            const deliveryType = deliveryInput ? deliveryInput.value : 'office';
+
+            const itemsPayload = selected.map(([itemId, qty]) => {
+                const item = cafe.items.find((i) => i.id === itemId);
+                return {
+                    id: item.id,
+                    name: item.name,
+                    qty,
+                    price: item.price,
+                    total: item.price * qty
+                };
+            });
+
+            const total = itemsPayload.reduce((sum, i) => sum + i.total, 0);
+
+            const payload = {
+                type: 'lunch-order',
+                cafeId: cafe.id,          // ВАЖНО: это id из БД
+                cafeName: cafe.title,
+                deliveryType,             // office | restaurant
+                comment: commentEl.value.trim(),
+                total,
+                items: itemsPayload
+            };
+
+            if (tg) {
+                tg.sendData(JSON.stringify(payload));
+                tg.close();
+            } else {
+                console.log('Demo order payload:', payload);
+                alert('Telegram WebApp SDK недоступен. Заказ выведен в консоль.');
+            }
+        });
+
+        renderCafes();
+    </script>
+</body>
+</html>

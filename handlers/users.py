@@ -1,20 +1,33 @@
 # handlers/users.py
+import os
+import json
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import (
-    Message, InlineKeyboardMarkup, InlineKeyboardButton,
-    CallbackQuery
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery,
+    WebAppInfo,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
 from db.db_controller import (
-    get_employee, get_shops, get_shop_by_id,
-    add_order, get_orders_by_user, delete_order
+    get_employee,
+    get_shops,
+    get_shop_by_id,
+    add_order,
+    get_orders_by_user,
+    delete_order,
 )
-import json
 
 router = Router()
+
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://example.com/")  # ЗАМЕНИ или поставь через .env
 
 
 class OrderFSM(StatesGroup):
@@ -27,18 +40,40 @@ class OrderFSM(StatesGroup):
 async def cmd_start(message: Message):
     user = get_employee(message.from_user.id)
     if not user:
-        await message.answer("Вы не зарегистрированы в системе.\nВаш ID: {}".format(message.from_user.id))
+        await message.answer(
+            "Вы не зарегистрированы в системе.\nВаш ID: {}".format(message.from_user.id)
+        )
         return
 
-    kb = [
-        [InlineKeyboardButton(text="🍽 Заказать еду", callback_data="create_order")],
-        [InlineKeyboardButton(text="📦 Мои заказы", callback_data="orders_history")]
-    ]
-    await message.answer(
-        f"Привет, {user[1]}! 👋\nВыбери действие:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    # Reply-клваиатура с кнопкой открытия мини-аппа
+    reply_kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(
+                    text="🍱 Открыть мини-приложение",
+                    web_app=WebAppInfo(url=WEBAPP_URL),
+                )
+            ]
+        ],
+        resize_keyboard=True,
     )
 
+    inline_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🍽 Заказать через бота", callback_data="create_order")],
+            [InlineKeyboardButton(text="📦 Мои заказы", callback_data="orders_history")],
+        ]
+    )
+
+    await message.answer(
+        f"Привет, {user[1]}! 👋\n"
+        f"Ты можешь открыть мини-приложение или заказать прямо через бота.",
+        reply_markup=reply_kb,
+    )
+    await message.answer("Выбери действие:", reply_markup=inline_kb)
+
+
+# ========== заказ через бота (старый сценарий) ==========
 
 @router.callback_query(F.data == "create_order")
 async def create_order(callback: CallbackQuery, state: FSMContext):
@@ -47,10 +82,10 @@ async def create_order(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("Сейчас нет доступных кафе.")
         return
 
-    kb = [
-        [InlineKeyboardButton(text=f"{s[1]} ({s[2]})", callback_data=f"cafe_{s[0]}")]
-        for s in shops
-    ]
+    kb = [[InlineKeyboardButton(
+        text=f"{s[1]} ({s[2]})",
+        callback_data=f"cafe_{s[0]}"
+    )] for s in shops]
     await callback.message.edit_text(
         "Выберите кафе:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
@@ -76,13 +111,10 @@ async def choose_cafe(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(cafe_id=cafe_id, items=[])
-    kb = [
-        [InlineKeyboardButton(
-            text=f"{item['title']} — {item['price']}₽",
-            callback_data=f"add_{idx}"
-        )]
-        for idx, item in enumerate(menu)
-    ]
+    kb = [[InlineKeyboardButton(
+        text=f"{item['title']} — {item['price']}₽",
+        callback_data=f"add_{idx}"
+    )] for idx, item in enumerate(menu)]
     kb.append([InlineKeyboardButton(text="Готово", callback_data="finish_select")])
     await callback.message.edit_text(
         f"Меню — {shop[1]}:",
@@ -134,10 +166,7 @@ async def finish_selection(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="Подтвердить", callback_data="confirm_order")],
         [InlineKeyboardButton(text="Отмена", callback_data="cancel_order")]
     ]
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
-    )
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     await state.set_state(OrderFSM.confirm)
 
 
@@ -185,16 +214,15 @@ async def order_history(callback: CallbackQuery):
         for it in items:
             text += f"• {it.get('title')} — {it.get('price')}₽\n"
         text += "\n"
-        kb.append([InlineKeyboardButton(
-            text=f"Отменить #{order_id}",
-            callback_data=f"cancel_order_{order_id}"
-        )])
+        kb.append([
+            InlineKeyboardButton(
+                text=f"Отменить #{order_id}",
+                callback_data=f"cancel_order_{order_id}"
+            )
+        ])
 
     kb.append([InlineKeyboardButton(text="Назад", callback_data="back_to_menu")])
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
-    )
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
 @router.callback_query(F.data.regexp(r"^cancel_order_\d+$"))
@@ -208,3 +236,102 @@ async def cancel_order(callback: CallbackQuery):
         await callback.message.edit_text(
             "❌ Не удалось отменить заказ (возможно он уже был удалён или не ваш)."
         )
+
+
+# ========== заказ из мини-аппа (WebApp) ==========
+
+@router.message(F.web_app_data)
+async def handle_webapp_order(message: Message):
+    """
+    Принимаем JSON из WebApp (tg.sendData), сохраняем заказ в БД.
+    """
+    try:
+        raw = message.web_app_data.data
+        data = json.loads(raw)
+    except Exception:
+        await message.answer("⚠️ Не удалось прочитать данные из мини-приложения.")
+        return
+
+    if not isinstance(data, dict) or data.get("type") != "lunch-order":
+        await message.answer("⚠️ Пришли непонятные данные из мини-приложения.")
+        return
+
+    cafe_id = data.get("cafeId")
+    cafe_name = data.get("cafeName") or "Кафе"
+    items_payload = data.get("items") or []
+
+    if cafe_id is None:
+        await message.answer("⚠️ Нет ID кафе в заказе.")
+        return
+
+    try:
+        cafe_id = int(cafe_id)
+    except Exception:
+        await message.answer("⚠️ Некорректный ID кафе.")
+        return
+
+    shop = get_shop_by_id(cafe_id)
+    if not shop:
+        await message.answer("⚠️ Это кафе больше недоступно или удалено.")
+        return
+
+    if not items_payload:
+        await message.answer("⚠️ Мини-приложение прислало пустой заказ.")
+        return
+
+    db_items = []
+    total_calc = 0
+
+    for it in items_payload:
+        name = it.get("name") or "Блюдо"
+        try:
+            price = float(it.get("price") or 0)
+        except Exception:
+            price = 0.0
+        qty = int(it.get("qty") or 0)
+        if qty <= 0:
+            continue
+
+        for _ in range(qty):
+            db_items.append({"title": name, "price": price})
+        total_calc += price * qty
+
+    if not db_items:
+        await message.answer("⚠️ Мини-приложение прислало пустой заказ.")
+        return
+
+    order_id = add_order(
+        user_id=message.from_user.id,
+        shop_id=cafe_id,
+        items=db_items,
+    )
+
+    delivery_type = data.get("deliveryType", "office")
+    delivery_text = "доставка в офис" if delivery_type == "office" else "на подносе в ресторане"
+    comment = data.get("comment") or ""
+    comment = comment.strip() if isinstance(comment, str) else ""
+
+    text = f"🎉 Заказ из мини-приложения сохранён!\n\n"
+    text += f"Кафе: {cafe_name}\n"
+    text += f"Подача: {delivery_text}\n\n"
+    text += "Состав заказа:\n"
+
+    for it in items_payload:
+        name = it.get("name") or "Блюдо"
+        qty = int(it.get("qty") or 0)
+        try:
+            price = float(it.get("price") or 0)
+        except Exception:
+            price = 0.0
+        if qty <= 0:
+            continue
+        line_total = price * qty
+        text += f"• {name} ×{qty} — {line_total} ₽\n"
+
+    text += f"\nИтого: {total_calc} ₽"
+    text += f"\nID заказа в системе: #{order_id}"
+
+    if comment:
+        text += f"\nКомментарий: {comment}"
+
+    await message.answer(text)

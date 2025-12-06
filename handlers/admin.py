@@ -46,15 +46,17 @@ async def render_shop_management(message_obj, shop_id: int):
         [InlineKeyboardButton(text="📋 Посмотреть меню", callback_data=f"adm_shop_viewmenu_{shop_id}")],
         [InlineKeyboardButton(text="➕ Добавить позицию", callback_data=f"adm_shop_additem_{shop_id}")],
         [InlineKeyboardButton(text="🗑 Удалить позицию", callback_data=f"adm_shop_delchoose_{shop_id}")],
-        [InlineKeyboardButton(text=("🚫 Сделать неактивным" if active else "✅ Сделать активным"),
-                             callback_data=f"adm_shop_toggleactive_{shop_id}")],
+        [InlineKeyboardButton(
+            text=("🚫 Сделать неактивным" if active else "✅ Сделать активным"),
+            callback_data=f"adm_shop_toggleactive_{shop_id}"
+        )],
         [InlineKeyboardButton(text="⬅ Назад (список)", callback_data="adm_list_shops")]
     ]
     text = (
         f"Управление кафе: {shop[1]}\n"
         f"Адрес: {shop[2]}\n\n"
         f"Состояние: {'активно' if active else 'неактивно'}\n"
-        f"Время отчёта (МСК): {shop[6] or 'не задан'}"
+        f"Время отчёта (МСК): {shop[6] or 'не задано'}"
     )
     try:
         await message_obj.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
@@ -97,7 +99,8 @@ async def adm_shop_name(message: Message, state: FSMContext):
 async def adm_shop_address(message: Message, state: FSMContext):
     await state.update_data(address=message.text)
     await message.answer(
-        "Можно добавить меню сейчас JSON'ом (опционально) или отправьте /skipmenu чтобы добавить меню позже через кнопки.\n\n"
+        "Можно добавить меню сейчас JSON'ом (опционально) или отправьте /skipmenu, "
+        "чтобы добавить меню позже через кнопки.\n\n"
         "Пример JSON:\n"
         '[{"title": "Борщ", "price": 150}, {"title": "Пюре", "price": 100}]'
     )
@@ -149,7 +152,6 @@ async def adm_shop_day(message: Message, state: FSMContext):
 async def adm_shop_report_time(message: Message, state: FSMContext):
     data = await state.get_data()
     menu = data.get("menu", [])
-    # report_time хранится в формате "HH:MM" по МСК
     add_shop(
         name=data["name"],
         address=data["address"],
@@ -159,8 +161,10 @@ async def adm_shop_report_time(message: Message, state: FSMContext):
         report_time=message.text.strip()
     )
     await state.clear()
-    await message.answer("✅ Кафе добавлено. Меню можно редактировать в списке кафе.\n"
-                         "Отчёты будут формироваться автоматически по МСК.")
+    await message.answer(
+        "✅ Кафе добавлено. Меню можно редактировать в списке кафе.\n"
+        "Отчёты будут отправляться автоматически по МСК."
+    )
 
 
 @router.callback_query(F.data == "adm_list_shops")
@@ -176,9 +180,12 @@ async def adm_list_shops(callback: CallbackQuery):
     kb = []
     for s in shops:
         active = "🟢" if s[7] == 1 else "🔴"
-        kb.append([InlineKeyboardButton(text=f"{active} {s[1]} — {s[2]}", callback_data=f"adm_shop_{s[0]}")])
+        kb.append([InlineKeyboardButton(
+            text=f"{active} {s[1]} — {s[2]}",
+            callback_data=f"adm_shop_{s[0]}"
+        )])
     await callback.message.edit_text(
-        "Список кафе (нажмите чтобы редактировать):",
+        "Список кафе (нажмите, чтобы редактировать):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
     )
 
@@ -292,10 +299,12 @@ async def adm_shop_toggleactive(callback: CallbackQuery):
     if not shop:
         await callback.answer("Кафе не найдено", show_alert=True)
         return
-    new_state = False if shop[7] == 1 else True
+    new_state = not (shop[7] == 1)
     ok = set_shop_active(shop_id, new_state)
     if ok:
-        await callback.message.answer(f"Состояние кафе обновлено: {'активно' if new_state else 'неактивно'}.")
+        await callback.message.answer(
+            f"Состояние кафе обновлено: {'активно' if new_state else 'неактивно'}."
+        )
     else:
         await callback.message.answer("Не удалось изменить состояние кафе.")
     await adm_list_shops(callback)
