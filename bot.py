@@ -1,12 +1,14 @@
 # bot.py
-import os
 import asyncio
 import logging
 import json
+from datetime import datetime
+
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
+from pytz import timezone  # важно для корректного МСК
+
 from db.db_controller import (
     init_db, get_shops, get_orders_by_shop, clear_orders_for_shop,
     get_managers, get_employee, get_shop_by_id
@@ -17,13 +19,18 @@ from handlers import users, admin
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Часовой пояс МСК
+SCHED_TZ = timezone("Europe/Moscow")
 
-# Scheduler timezone: Europe/Berlin
-SCHED_TZ = "Europe/Moscow"
+# Планировщик
 scheduler = AsyncIOScheduler(timezone=SCHED_TZ)
 
 
 async def send_report_for_shop(bot: Bot, shop_id: int):
+    """
+    Формирует и отправляет отчёт по одному кафе всем менеджерам.
+    После отправки очищает заказы по этому кафе.
+    """
     orders = get_orders_by_shop(shop_id)
     if not orders:
         logger.info("No orders for shop_id=%s, skipping report", shop_id)
@@ -68,34 +75,47 @@ async def send_report_for_shop(bot: Bot, shop_id: int):
     logger.info("Cleared orders for shop_id=%s after sending report", shop_id)
 
 
-def schedule_jobs_for_all_shops(bot: Bot):
+async def check_and_send_reports(bot: Bot):
     """
-    (Re)create cron jobs for all shops that have report_time.
-    Called at startup.
+    Единая задача, которая каждую минуту проверяет,
+    какое сейчас время по МСК, и сравнивает с report_time у кафе.
+    Если совпало – шлёт отчёт и очищает заказы.
     """
-    scheduler.remove_all_jobs()
+    now = datetime.now(SCHED_TZ)
+    current_hhmm = now.strftime("%H:%M")
+    logger.debug("Checking reports for time %s (MSK)", current_hhmm)
+
     shops = get_shops(active_only=False)
     for s in shops:
         shop_id = s[0]
-        report_time = s[6]
+        report_time = (s[6] or "").strip()
         if not report_time:
             continue
-        try:
-            hhmm = report_time.strip()
-            hh, mm = map(int, hhmm.split(":"))
-        except Exception:
-            logger.warning("Invalid report_time for shop %s: %s", shop_id, report_time)
-            continue
-        # Add cron job in Europe/Berlin tz
-        trigger = CronTrigger(hour=hh, minute=mm, timezone=SCHED_TZ)
-        scheduler.add_job(send_report_for_shop, trigger, args=[bot, shop_id],
-                          id=f"report_shop_{shop_id}", replace_existing=True)
-        logger.info("Scheduled report for shop %s at %02d:%02d (%s)", shop_id, hh, mm, SCHED_TZ)
+        if report_time == current_hhmm:
+            logger.info("Time matched for shop %s at %s, sending report", shop_id, current_hhmm)
+            await send_report_for_shop(bot, shop_id)
+
+
+def start_scheduler(bot: Bot):
+    """
+    Запускает планировщик: каждая минута вызывается check_and_send_reports по МСК.
+    """
+    # job раз в минуту
+    scheduler.add_job(
+        check_and_send_reports,
+        CronTrigger(minute="*", timezone=SCHED_TZ),
+        args=[bot],
+        id="check_reports_job",
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info("Scheduler started with 1-minute check job (MSK).")
 
 
 async def main():
     # Init DB
     init_db()
+
     # Create bot & dp
     bot = Bot(token="8404133001:AAHEW9DXaKErO4gD_8rXHSa-XQ13X1Xbu8c")
     dp = Dispatcher()
@@ -105,8 +125,7 @@ async def main():
     dp.include_router(admin.router)
 
     # start scheduler
-    scheduler.start()
-    schedule_jobs_for_all_shops(bot)
+    start_scheduler(bot)
 
     # delete webhook and start polling
     await bot.delete_webhook(drop_pending_updates=True)

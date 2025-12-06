@@ -8,7 +8,10 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
-from db.db_controller import get_employee, get_shops, get_shop_by_id, add_order, get_orders_by_user, delete_order
+from db.db_controller import (
+    get_employee, get_shops, get_shop_by_id,
+    add_order, get_orders_by_user, delete_order
+)
 import json
 
 router = Router()
@@ -31,7 +34,10 @@ async def cmd_start(message: Message):
         [InlineKeyboardButton(text="🍽 Заказать еду", callback_data="create_order")],
         [InlineKeyboardButton(text="📦 Мои заказы", callback_data="orders_history")]
     ]
-    await message.answer(f"Привет, {user[1]}! 👋\nВыбери действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await message.answer(
+        f"Привет, {user[1]}! 👋\nВыбери действие:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
 
 
 @router.callback_query(F.data == "create_order")
@@ -41,8 +47,14 @@ async def create_order(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("Сейчас нет доступных кафе.")
         return
 
-    kb = [[InlineKeyboardButton(text=f"{s[1]} ({s[2]})", callback_data=f"cafe_{s[0]}")] for s in shops]
-    await callback.message.edit_text("Выберите кафе:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    kb = [
+        [InlineKeyboardButton(text=f"{s[1]} ({s[2]})", callback_data=f"cafe_{s[0]}")]
+        for s in shops
+    ]
+    await callback.message.edit_text(
+        "Выберите кафе:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
     await state.set_state(OrderFSM.choose_cafe)
 
 
@@ -64,9 +76,18 @@ async def choose_cafe(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(cafe_id=cafe_id, items=[])
-    kb = [[InlineKeyboardButton(text=f"{item['title']} — {item['price']}₽", callback_data=f"add_{idx}")] for idx, item in enumerate(menu)]
+    kb = [
+        [InlineKeyboardButton(
+            text=f"{item['title']} — {item['price']}₽",
+            callback_data=f"add_{idx}"
+        )]
+        for idx, item in enumerate(menu)
+    ]
     kb.append([InlineKeyboardButton(text="Готово", callback_data="finish_select")])
-    await callback.message.edit_text(f"Меню — {shop[1]}:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.message.edit_text(
+        f"Меню — {shop[1]}:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
     await state.set_state(OrderFSM.choose_items)
 
 
@@ -113,7 +134,10 @@ async def finish_selection(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="Подтвердить", callback_data="confirm_order")],
         [InlineKeyboardButton(text="Отмена", callback_data="cancel_order")]
     ]
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
     await state.set_state(OrderFSM.confirm)
 
 
@@ -161,10 +185,16 @@ async def order_history(callback: CallbackQuery):
         for it in items:
             text += f"• {it.get('title')} — {it.get('price')}₽\n"
         text += "\n"
-        kb.append([InlineKeyboardButton(text=f"Отменить #{order_id}", callback_data=f"cancel_order_{order_id}")])
+        kb.append([InlineKeyboardButton(
+            text=f"Отменить #{order_id}",
+            callback_data=f"cancel_order_{order_id}"
+        )])
 
     kb.append([InlineKeyboardButton(text="Назад", callback_data="back_to_menu")])
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
 
 
 @router.callback_query(F.data.regexp(r"^cancel_order_\d+$"))
@@ -175,4 +205,6 @@ async def cancel_order(callback: CallbackQuery):
     if ok:
         await callback.message.edit_text(f"✅ Заказ #{order_id} отменён.")
     else:
-        await callback.message.edit_text("❌ Не удалось отменить заказ (возможно он уже был удалён или не ваш).")
+        await callback.message.edit_text(
+            "❌ Не удалось отменить заказ (возможно он уже был удалён или не ваш)."
+        )

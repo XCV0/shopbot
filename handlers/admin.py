@@ -50,7 +50,12 @@ async def render_shop_management(message_obj, shop_id: int):
                              callback_data=f"adm_shop_toggleactive_{shop_id}")],
         [InlineKeyboardButton(text="⬅ Назад (список)", callback_data="adm_list_shops")]
     ]
-    text = f"Управление кафе: {shop[1]}\nАдрес: {shop[2]}\n\nСостояние: {'активно' if active else 'неактивно'}\nReport time: {shop[6] or 'не задан'}"
+    text = (
+        f"Управление кафе: {shop[1]}\n"
+        f"Адрес: {shop[2]}\n\n"
+        f"Состояние: {'активно' if active else 'неактивно'}\n"
+        f"Время отчёта (МСК): {shop[6] or 'не задан'}"
+    )
     try:
         await message_obj.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     except:
@@ -144,16 +149,18 @@ async def adm_shop_day(message: Message, state: FSMContext):
 async def adm_shop_report_time(message: Message, state: FSMContext):
     data = await state.get_data()
     menu = data.get("menu", [])
+    # report_time хранится в формате "HH:MM" по МСК
     add_shop(
         name=data["name"],
         address=data["address"],
         menu=menu,
         time_available=data.get("time_available", ""),
         day_available=data.get("day_available", ""),
-        report_time=message.text
+        report_time=message.text.strip()
     )
     await state.clear()
-    await message.answer("✅ Кафе добавлено. Меню можно редактировать в списке кафе.")
+    await message.answer("✅ Кафе добавлено. Меню можно редактировать в списке кафе.\n"
+                         "Отчёты будут формироваться автоматически по МСК.")
 
 
 @router.callback_query(F.data == "adm_list_shops")
@@ -170,7 +177,10 @@ async def adm_list_shops(callback: CallbackQuery):
     for s in shops:
         active = "🟢" if s[7] == 1 else "🔴"
         kb.append([InlineKeyboardButton(text=f"{active} {s[1]} — {s[2]}", callback_data=f"adm_shop_{s[0]}")])
-    await callback.message.edit_text("Список кафе (нажмите чтобы редактировать):", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.message.edit_text(
+        "Список кафе (нажмите чтобы редактировать):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
 
 
 @router.callback_query(F.data.regexp(r"^adm_shop_\d+$"))
@@ -251,10 +261,15 @@ async def adm_shop_delchoose(callback: CallbackQuery):
 
     kb = []
     for i, item in enumerate(menu):
-        kb.append([InlineKeyboardButton(text=f"Удалить: {item.get('title')} — {item.get('price')}₽",
-                                        callback_data=f"adm_shop_del_{shop_id}_{i}")])
+        kb.append([InlineKeyboardButton(
+            text=f"Удалить: {item.get('title')} — {item.get('price')}₽",
+            callback_data=f"adm_shop_del_{shop_id}_{i}"
+        )])
     kb.append([InlineKeyboardButton(text="Отмена", callback_data=f"adm_shop_{shop_id}")])
-    await callback.message.edit_text("Выберите позицию для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.message.edit_text(
+        "Выберите позицию для удаления:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
 
 
 @router.callback_query(F.data.regexp(r"^adm_shop_del_\d+_\d+$"))
