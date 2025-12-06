@@ -75,10 +75,8 @@ def add_employee(tg_id: int, name: str, office: str, ecard: str) -> bool:
         return False
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO employees (tg_id, name, office, ecard) VALUES (?, ?, ?, ?)",
-        (tg_id, name, office, ecard)
-    )
+    cur.execute("INSERT INTO employees (tg_id, name, office, ecard) VALUES (?, ?, ?, ?)",
+                (tg_id, name, office, ecard))
     conn.commit()
     conn.close()
     return True
@@ -133,22 +131,13 @@ def _parse_menu(raw: Optional[str]) -> List[Dict]:
     return []
 
 
-def add_shop(
-    name: str,
-    address: str,
-    menu: List[Dict],
-    time_available: str,
-    day_available: str,
-    report_time: str,
-    active: bool = True
-) -> int:
+def add_shop(name: str, address: str, menu: List[Dict], time_available: str,
+             day_available: str, report_time: str, active: bool = True) -> int:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        """
-        INSERT INTO shops (name, address, menu, time_available, day_available, report_time, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
+        "INSERT INTO shops (name, address, menu, time_available, day_available, report_time, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (name, address, json.dumps(menu, ensure_ascii=False),
          time_available, day_available, report_time, int(active))
     )
@@ -199,10 +188,8 @@ def add_item_to_shop(shop_id: int, title: str, price: float) -> bool:
         return False
     menu = _parse_menu(row[0])
     menu.append({"title": str(title), "price": float(price)})
-    cur.execute(
-        "UPDATE shops SET menu = ? WHERE id = ?",
-        (json.dumps(menu, ensure_ascii=False), shop_id)
-    )
+    cur.execute("UPDATE shops SET menu = ? WHERE id = ?",
+                (json.dumps(menu, ensure_ascii=False), shop_id))
     conn.commit()
     conn.close()
     return True
@@ -221,10 +208,8 @@ def remove_item_from_shop(shop_id: int, item_index: int) -> bool:
         conn.close()
         return False
     menu.pop(item_index)
-    cur.execute(
-        "UPDATE shops SET menu = ? WHERE id = ?",
-        (json.dumps(menu, ensure_ascii=False), shop_id)
-    )
+    cur.execute("UPDATE shops SET menu = ? WHERE id = ?",
+                (json.dumps(menu, ensure_ascii=False), shop_id))
     conn.commit()
     conn.close()
     return True
