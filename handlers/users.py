@@ -28,10 +28,11 @@ from db.db_controller import (
 )
 # РЕЖИМ ПРЕЗЕНТАЦИИ, ОТВЕЧАЕТ ВСЕМ ПОЛЬЗОВАТЕЛЯМ
 PRESENTATION_MODE = False
+WEBAPP_URL = "https://ixipa.ru/"
 
 router = Router()
 # URL tg app
-WEBAPP_URL = "https://ixipa.ru/"
+
 
 MSK_TZ = timezone("Europe/Moscow")
 
