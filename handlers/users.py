@@ -27,11 +27,12 @@ from db.db_controller import (
     add_employee
 )
 # РЕЖИМ ПРЕЗЕНТАЦИИ, ОТВЕЧАЕТ ВСЕМ ПОЛЬЗОВАТЕЛЯМ
-PRESENTATION_MODE = False
+PRESENTATION_MODE = True
+# URL tg app
 WEBAPP_URL = "https://ixipa.ru/"
 
 router = Router()
-# URL tg app
+
 
 
 MSK_TZ = timezone("Europe/Moscow")
@@ -67,15 +68,7 @@ async def cmd_start(message: Message):
             "Ваш ID: {}".format(message.from_user.id)
         )
         return
-
-    if not user and PRESENTATION_MODE:
-        add_employee(message.from_user.id, message.from_user.first_name, "test", "test")
-        await message.answer(
-            f"Привет, {message.from_user.first_name}! 👋\n"
-            f"Ты можешь сделать заказ в мини-приложении.".format(message.from_user.first_name)
-        )
-        return
-
+    
     reply_kb = ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -94,6 +87,16 @@ async def cmd_start(message: Message):
             [InlineKeyboardButton(text="📦 Мои заказы", callback_data="orders_history")],
         ]
     )
+
+    if not user and PRESENTATION_MODE:
+        add_employee(message.from_user.id, message.from_user.first_name, "test", "test")
+        await message.answer(
+            f"Привет, {message.from_user.first_name}! 👋\n"
+            f"Ты можешь сделать заказ в мини-приложении.".format(message.from_user.first_name)
+        )
+        await message.answer("Выбери действие:", reply_markup=inline_kb)
+        return
+
 
     await message.answer(
         f"Привет, {user[1]}! 👋\n"
