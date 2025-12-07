@@ -27,7 +27,7 @@ from db.db_controller import (
     add_employee
 )
 # РЕЖИМ ПРЕЗЕНТАЦИИ, ОТВЕЧАЕТ ВСЕМ ПОЛЬЗОВАТЕЛЯМ
-PRESENTATION_MODE = True
+PRESENTATION_MODE = False
 # URL tg app
 WEBAPP_URL = "https://ixipa.ru/"
 
