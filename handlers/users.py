@@ -106,11 +106,6 @@ async def cmd_start(message: Message):
 # back button
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
-    """
-    ВАЖНО: здесь НЕЛЬЗЯ просто вызвать cmd_start(callback.message),
-    потому что callback.message.from_user = бот, а не человек.
-    Поэтому берём пользователя из callback.from_user.
-    """
     await state.clear()
 
     user = get_employee(callback.from_user.id)
