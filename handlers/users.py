@@ -392,10 +392,6 @@ async def cancel_order(callback: CallbackQuery):
 
 @router.message(F.web_app_data)
 async def handle_webapp_order(message: Message):
-    """
-    Принимаем JSON из WebApp (tg.sendData), сохраняем заказ в БД
-    и он должен появиться в "Мои заказы".
-    """
     try:
         raw = message.web_app_data.data
         data = json.loads(raw)
